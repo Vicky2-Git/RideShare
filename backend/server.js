@@ -1,6 +1,6 @@
 // --- Backend: server.js ---
-// This is the complete and corrected backend server file for your RideShare app,
-// now with real Google Cloud Vision API integration.
+// This is the complete and final backend server file for your RideShare app.
+// It includes all routes, models, and validations built so far.
 
 // Load environment variables from .env file
 require('dotenv').config();
@@ -12,7 +12,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const { check, validationResult } = require('express-validator');
-const vision = require('@google-cloud/vision'); // New import for Google Cloud Vision
 
 // Import new models
 const ProviderDetails = require('./models/ProviderDetails');
@@ -25,7 +24,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // Increased limit to handle large image data
+app.use(express.json({ limit: '50mb' }));
 
 // --- MongoDB Connection ---
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -81,45 +80,19 @@ const dummyVerificationData = {
     }
 };
 
-// --- Google Cloud Vision API Client ---
-// IMPORTANT: You MUST set the GOOGLE_APPLICATION_CREDENTIALS environment variable
-// to the path of your downloaded service account key file.
-// Or, if you prefer to use the API key directly, you can do this:
-const visionClient = new vision.ImageAnnotatorClient({
-    auth: {
-        apiKey: process.env.GOOGLE_CLOUD_VISION_API_KEY // This requires your API key in the .env file
-    }
-});
-
-// --- OCR Service Function (Real Google Cloud Vision API Call) ---
-async function ocrService(base64Image) {
-    try {
-        const [result] = await visionClient.documentTextDetection({
-            image: {
-                content: base64Image.replace(/^data:image\/(png|jpeg|jpg);base64,/, '')
-            }
-        });
-        const fullText = result.fullTextAnnotation.text;
-        console.log('OCR extracted text:', fullText);
-        
-        // This is a simple regex parsing. You may need to refine this for your specific document layouts.
-        const extractedData = {
-            name: /Name: (.+?)\n/.exec(fullText)?.[1] || 'OCR Name Not Found',
-            licenseNumber: /DL Number: (.+?)\n/.exec(fullText)?.[1] || 'OCR License Not Found',
-            dob: /DOB: (.+?)\n/.exec(fullText)?.[1] || 'OCR DOB Not Found',
-            validity: /Valid Till: (.+?)\n/.exec(fullText)?.[1] || 'OCR Validity Not Found',
-        };
-
-        return extractedData;
-    } catch (error) {
-        console.error('OCR API call failed:', error);
-        throw new Error('OCR API call failed.');
-    }
-}
+// --- OCR Service Function Placeholder (Simulating OCR API) ---
+const simulateOcr = (base64Image) => {
+    console.log("Simulating OCR on image data...");
+    const dummyOcrData = {
+        name: 'John Doe',
+        licenseNumber: 'DL9876543210',
+        dob: '1990-05-15',
+        validity: '2030-05-15',
+    };
+    return dummyOcrData;
+};
 
 // --- Routes ---
-// (Your existing routes for /api/auth/register, /api/auth/login, etc. go here)
-// ... (The rest of your server.js code) ...
 
 // 1. User Registration
 app.post(
@@ -149,13 +122,18 @@ app.post(
             const payload = {
                 user: { id: user.id, role: user.role }
             };
-            jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' },
+            jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' },
                 (err, token) => {
                     if (err) {
                         console.error('JWT sign error:', err.message);
                         return res.status(500).json({ message: 'Token generation failed.' });
                     }
-                    res.status(201).json({ message: 'User registered successfully', token });
+                    res.status(201).json({ 
+                        message: 'User registered successfully', 
+                        token,
+                        userRole: user.role,
+                        user: { id: user.id, name: user.name, email: user.email, role: user.role }
+                    });
                 }
             );
         } catch (err) {
@@ -166,34 +144,49 @@ app.post(
 );
 
 // 2. User Login
-app.post('/api/auth/login', async (req, res) => {
-    const { email, password } = req.body;
-    try {
-        let user = await User.findOne({ email });
-        if (!user) {
-            return res.status(400).json({ message: 'Invalid credentials' });
+app.post('/api/auth/login',
+    [
+        check('email', 'Please include a valid email').isEmail(),
+        check('password', 'Password is required').exists(),
+    ],
+    async (req, res) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
         }
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }
-        const payload = {
-            user: { id: user.id, role: user.role }
-        };
-        jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' },
-            (err, token) => {
-                if (err) {
-                    console.error('JWT sign error:', err.message);
-                    return res.status(500).json({ message: 'Token generation failed.' });
-                }
-                res.json({ message: 'Login successful', token, role: user.role });
+        const { email, password } = req.body;
+        try {
+            let user = await User.findOne({ email });
+            if (!user) {
+                return res.status(400).json({ message: 'Invalid credentials.' });
             }
-        );
-    } catch (err) {
-        console.error('Login error:', err.message);
-        res.status(500).json({ message: 'Server error during login.' });
+            const isMatch = await bcrypt.compare(password, user.password);
+            if (!isMatch) {
+                return res.status(400).json({ message: 'Invalid credentials.' });
+            }
+            const payload = {
+                user: { id: user.id, role: user.role }
+            };
+            jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' },
+                (err, token) => {
+                    if (err) {
+                        console.error('JWT sign error:', err.message);
+                        return res.status(500).json({ message: 'Token generation failed.' });
+                    }
+                    res.json({ 
+                        message: 'Login successful', 
+                        token, 
+                        userRole: user.role,
+                        user: { id: user.id, name: user.name, email: user.email, role: user.role } 
+                    });
+                }
+            );
+        } catch (err) {
+            console.error('Login error:', err.message);
+            res.status(500).json({ message: 'Server error during login.' });
+        }
     }
-});
+);
 
 // 3. Middleware to verify JWT token (for protected routes)
 function auth(req, res, next) {
@@ -210,14 +203,17 @@ function auth(req, res, next) {
     }
 }
 
-// 4. Get User Profile (Protected Route Example)
+// 3. Get User Profile (Token validation)
 app.get('/api/auth/me', auth, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password');
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
         res.json(user);
     } catch (err) {
-        console.error('Get profile error:', err.message);
-        res.status(500).json({ message: 'Server error fetching profile.' });
+        console.error('Get user profile error:', err.message);
+        res.status(500).json({ message: 'Server error fetching user profile.' });
     }
 });
 
@@ -273,7 +269,7 @@ app.post('/api/provider/details', auth, async (req, res) => {
         let ocrExtractedValidity = null;
         if (licensePhotoUrl) {
             try {
-                const ocrResult = await ocrService(licensePhotoUrl); // Using the real OCR service
+                const ocrResult = simulateOcr(licensePhotoUrl);
                 ocrExtractedName = ocrResult.name;
                 ocrExtractedLicenseNumber = ocrResult.licenseNumber;
                 ocrExtractedDob = ocrResult.dob;
@@ -317,6 +313,53 @@ app.get('/api/provider/details', auth, async (req, res) => {
     }
 });
 
+// --- Provider Rides Routes (Corrected) ---
+
+// @route   GET /api/provider/rides
+// @desc    Get all rides created by the authenticated provider
+// @access  Private (Provider role required)
+app.get('/api/provider/rides', auth, async (req, res) => {
+    const user = await User.findById(req.user.id);
+    if (!user || user.role !== 'provider') {
+        return res.status(403).json({ message: 'Access denied. Only providers can view their rides.' });
+    }
+    try {
+        const rides = await Ride.find({ provider: req.user.id }).populate('riders.user', 'name mobileNumber');
+        res.json({ rides });
+    } catch (err) {
+        console.error('Get provider rides error:', err.message);
+        res.status(500).json({ message: 'Server error fetching provider rides.' });
+    }
+});
+
+// @route   DELETE /api/provider/rides/:rideId
+// @desc    Delete a ride created by the authenticated provider if not started/completed
+// @access  Private (Provider role required)
+app.delete('/api/provider/rides/:rideId', auth, async (req, res) => {
+    const user = await User.findById(req.user.id);
+    if (!user || user.role !== 'provider') {
+        return res.status(403).json({ message: 'Access denied. Only providers can delete rides.' });
+    }
+    try {
+        const ride = await Ride.findById(req.params.rideId);
+        if (!ride) {
+            return res.status(404).json({ message: 'Ride not found.' });
+        }
+        if (ride.provider.toString() !== req.user.id) {
+            return res.status(403).json({ message: 'You are not allowed to delete this ride.' });
+        }
+        if (ride.status === 'started' || ride.status === 'completed') {
+            return res.status(400).json({ message: 'Ride cannot be deleted after it has started or completed.' });
+        }
+        await ride.deleteOne();
+        return res.json({ message: 'Ride deleted successfully.' });
+    } catch (err) {
+        console.error('Delete ride error:', err.message);
+        return res.status(500).json({ message: 'Server error deleting ride.' });
+    }
+});
+
+
 // --- Rider Details Routes ---
 
 app.post('/api/rider/details', auth, async (req, res) => {
@@ -354,6 +397,154 @@ app.get('/api/rider/details', auth, async (req, res) => {
     } catch (err) {
         console.error('Get rider details error:', err.message);
         res.status(500).json({ message: 'Server error fetching rider details.' });
+    }
+});
+
+// --- Ride Management Routes (Corrected) ---
+
+// @route   POST /api/rides/create
+// @desc    Create a new ride (Provider only)
+// @access  Private (Requires Provider role)
+app.post('/api/rides/create', auth, async (req, res) => {
+    const { vehicleCategory, startPoint, destination, breakLocations, startTime, endTime, rideCost, womenOnly } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user || user.role !== 'provider') {
+        return res.status(403).json({ message: 'Access denied. Only providers can create rides.' });
+    }
+    if (!startPoint || !destination || !startTime || !rideCost) {
+        return res.status(400).json({ message: 'Start point, destination, start time, and ride cost are required.' });
+    }
+    try {
+        const providerDetails = await ProviderDetails.findOne({ user: req.user.id });
+        if (!providerDetails) {
+            return res.status(400).json({ message: 'Please complete your provider details before creating a ride.' });
+        }
+        const newRide = new Ride({
+            provider: req.user.id,
+            vehicleCategory: providerDetails.vehicleCategory,
+            startPoint,
+            destination,
+            breakLocations,
+            startTime,
+            endTime,
+            rideCost,
+            womenOnly
+        });
+        await newRide.save();
+        res.status(201).json({ message: 'Ride created successfully', ride: newRide });
+    } catch (err) {
+        console.error('Ride creation error:', err.message);
+        res.status(500).json({ message: 'Server error creating ride.' });
+    }
+});
+
+// @route   POST /api/ride (Backward compatibility)
+// @desc    Create a new ride (Provider only)
+// @access  Private (Requires Provider role)
+app.post('/api/ride', auth, async (req, res) => {
+    const { vehicleCategory, startPoint, destination, breakLocations, startTime, endTime, rideCost, womenOnly } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user || user.role !== 'provider') {
+        return res.status(403).json({ message: 'Access denied. Only providers can create rides.' });
+    }
+    if (!startPoint || !destination || !startTime || !rideCost) {
+        return res.status(400).json({ message: 'Start point, destination, start time, and ride cost are required.' });
+    }
+    try {
+        const providerDetails = await ProviderDetails.findOne({ user: req.user.id });
+        if (!providerDetails) {
+            return res.status(400).json({ message: 'Please complete your provider details before creating a ride.' });
+        }
+        const newRide = new Ride({
+            provider: req.user.id,
+            vehicleCategory: vehicleCategory || providerDetails.vehicleCategory,
+            startPoint,
+            destination,
+            breakLocations: breakLocations || [],
+            startTime: new Date(startTime),
+            endTime: endTime ? new Date(endTime) : undefined,
+            rideCost: parseFloat(rideCost),
+            womenOnly: womenOnly || false
+        });
+        await newRide.save();
+        res.status(201).json({ message: 'Ride created successfully', ride: newRide });
+    } catch (err) {
+        console.error('Ride creation error:', err.message);
+        res.status(500).json({ message: 'Server error creating ride.' });
+    }
+});
+
+// @route   GET /api/rides/search
+// @desc    Search for available rides (Rider only)
+// @access  Private (Requires Rider role)
+app.get('/api/rides/search', auth, async (req, res) => {
+    const { startPoint, destination } = req.query;
+    const user = await User.findById(req.user.id);
+    if (!user || user.role !== 'rider') {
+        return res.status(403).json({ message: 'Access denied. Only riders can search for rides.' });
+    }
+    if (!startPoint || !destination) {
+        return res.status(400).json({ message: 'Start point and destination are required for searching.' });
+    }
+    try {
+        const rides = await Ride.find({
+            startPoint: new RegExp(startPoint, 'i'),
+            destination: new RegExp(destination, 'i'),
+            status: 'created'
+        })
+        .populate('provider', 'name mobileNumber')
+        .select('-riders -liveLocation');
+        res.json({ message: 'Rides found', rides });
+    } catch (err) {
+        console.error('Ride search error:', err.message);
+        res.status(500).json({ message: 'Server error searching for rides.' });
+    }
+});
+
+// @route   GET /api/rides
+// @desc    Get all available rides (Rider only)
+// @access  Private (Requires Rider role)
+app.get('/api/rides', auth, async (req, res) => {
+    const user = await User.findById(req.user.id);
+    if (!user || user.role !== 'rider') {
+        return res.status(403).json({ message: 'Access denied. Only riders can view available rides.' });
+    }
+    try {
+        const now = new Date();
+        const rides = await Ride.find({ status: 'created', startTime: { $gt: now } })
+            .populate('provider', 'name mobileNumber')
+            .select('-riders -liveLocation')
+            .sort({ createdAt: -1 });
+        res.json({ rides });
+    } catch (err) {
+        console.error('Get rides error:', err.message);
+        res.status(500).json({ message: 'Server error fetching rides.' });
+    }
+});
+
+// @route   POST /api/rides/book/:rideId
+// @desc    Book a ride (Rider only)
+// @access  Private (Requires Rider role)
+app.post('/api/rides/book/:rideId', auth, async (req, res) => {
+    try {
+        const ride = await Ride.findById(req.params.rideId);
+        if (!ride) {
+            return res.status(404).json({ message: 'Ride not found.' });
+        }
+        const isAlreadyRider = ride.riders.some(rider => rider.user.toString() === req.user.id);
+        if (isAlreadyRider) {
+            return res.status(400).json({ message: 'You have already booked this ride.' });
+        }
+        ride.riders.push({
+            user: req.user.id,
+            status: 'accepted',
+            otp: '1234'
+        });
+        await ride.save();
+        res.json({ message: 'Ride booked successfully', ride });
+    } catch (err) {
+        console.error('Ride booking error:', err.message);
+        res.status(500).json({ message: 'Server error booking ride.' });
     }
 });
 
