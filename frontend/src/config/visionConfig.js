@@ -3,7 +3,11 @@
 
 // IMPORTANT: Replace this with your actual Google Cloud Vision API key
 // You can get this from the Google Cloud Console: https://console.cloud.google.com/
-export const GOOGLE_CLOUD_VISION_API_KEY = 'YOUR_ACTUAL_API_KEY_HERE'; // Replace with your actual key
+// Option 1: Direct key (for development)
+export const GOOGLE_CLOUD_VISION_API_KEY = 'AIzaSyCx0hS3vR5C7vk6tefCNyB8PsxLfReZwOM'; // Replace with your actual key
+
+// Option 2: Environment variable (recommended for production)
+// export const GOOGLE_CLOUD_VISION_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_VISION_API_KEY || 'YOUR_ACTUAL_API_KEY_HERE';
 
 // Instructions to get the API key:
 // 1. Go to Google Cloud Console: https://console.cloud.google.com/

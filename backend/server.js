@@ -243,7 +243,7 @@ app.post('/api/provider/details', auth, async (req, res) => {
     const {
         vehicleCategory, vehicleNumber, rcNumber, insuranceNumber, licenseNumber, aadharNumber,
         vehicleType, vehiclePhotoUrl, rcPhotoUrl, insurancePhotoUrl,
-        licensePhotoUrl, aadharPhotoUrl, isPreviouslyUsedVehicle
+        licensePhotoUrl, aadharPhotoUrl, isPreviouslyUsedVehicle, livePhotoUrl
     } = req.body;
     const user = await User.findById(req.user.id);
     if (!user || user.role !== 'provider') {
@@ -289,7 +289,7 @@ app.post('/api/provider/details', auth, async (req, res) => {
         const detailsFields = {
             user: req.user.id, vehicleCategory, vehicleNumber, rcNumber, insuranceNumber, licenseNumber, aadharNumber,
             vehicleType: vehicleCategory === 'Car' ? vehicleType : undefined, vehiclePhotoUrl, rcPhotoUrl, insurancePhotoUrl,
-            licensePhotoUrl, aadharPhotoUrl, isPreviouslyUsedVehicle, rcVerified, insuranceVerified, licenseVerified, aadharVerified,
+            licensePhotoUrl, aadharPhotoUrl, livePhotoUrl, isPreviouslyUsedVehicle, rcVerified, insuranceVerified, licenseVerified, aadharVerified,
             ocrExtractedName, ocrExtractedLicenseNumber, ocrExtractedDob, ocrExtractedValidity
         };
         let providerDetails = await ProviderDetails.findOneAndUpdate({ user: req.user.id }, { $set: detailsFields }, { new: true, upsert: true });
@@ -315,9 +315,9 @@ app.get('/api/provider/details', auth, async (req, res) => {
 
 // --- Provider Rides Routes (Corrected) ---
 
-// @route   GET /api/provider/rides
-// @desc    Get all rides created by the authenticated provider
-// @access  Private (Provider role required)
+// @route   GET /api/provider/rides
+// @desc    Get all rides created by the authenticated provider
+// @access  Private (Provider role required)
 app.get('/api/provider/rides', auth, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user || user.role !== 'provider') {
@@ -332,9 +332,9 @@ app.get('/api/provider/rides', auth, async (req, res) => {
     }
 });
 
-// @route   DELETE /api/provider/rides/:rideId
-// @desc    Delete a ride created by the authenticated provider if not started/completed
-// @access  Private (Provider role required)
+// @route   DELETE /api/provider/rides/:rideId
+// @desc    Delete a ride created by the authenticated provider if not started/completed
+// @access  Private (Provider role required)
 app.delete('/api/provider/rides/:rideId', auth, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user || user.role !== 'provider') {
@@ -363,7 +363,7 @@ app.delete('/api/provider/rides/:rideId', auth, async (req, res) => {
 // --- Rider Details Routes ---
 
 app.post('/api/rider/details', auth, async (req, res) => {
-    const { aadharNumber, mobileNumber, aadharPhotoUrl } = req.body;
+    const { aadharNumber, mobileNumber, aadharPhotoUrl, livePhotoUrl } = req.body;
     const user = await User.findById(req.user.id);
     if (!user || user.role !== 'rider') {
         return res.status(403).json({ message: 'Access denied. Only riders can add details.' });
@@ -371,7 +371,7 @@ app.post('/api/rider/details', auth, async (req, res) => {
     try {
         const aadharVerified = dummyVerificationData.aadhar[aadharNumber]?.isValid || false;
         const detailsFields = {
-            user: req.user.id, aadharNumber, mobileNumber, aadharPhotoUrl, aadharVerified
+            user: req.user.id, aadharNumber, mobileNumber, aadharPhotoUrl, livePhotoUrl, aadharVerified
         };
         let riderDetails = await RiderDetails.findOneAndUpdate(
             { user: req.user.id }, { $set: detailsFields }, { new: true, upsert: true }
@@ -402,9 +402,9 @@ app.get('/api/rider/details', auth, async (req, res) => {
 
 // --- Ride Management Routes (Corrected) ---
 
-// @route   POST /api/rides/create
-// @desc    Create a new ride (Provider only)
-// @access  Private (Requires Provider role)
+// @route   POST /api/rides/create
+// @desc    Create a new ride (Provider only)
+// @access  Private (Requires Provider role)
 app.post('/api/rides/create', auth, async (req, res) => {
     const { vehicleCategory, startPoint, destination, breakLocations, startTime, endTime, rideCost, womenOnly } = req.body;
     const user = await User.findById(req.user.id);
@@ -438,9 +438,9 @@ app.post('/api/rides/create', auth, async (req, res) => {
     }
 });
 
-// @route   POST /api/ride (Backward compatibility)
-// @desc    Create a new ride (Provider only)
-// @access  Private (Requires Provider role)
+// @route   POST /api/ride (Backward compatibility)
+// @desc    Create a new ride (Provider only)
+// @access  Private (Requires Provider role)
 app.post('/api/ride', auth, async (req, res) => {
     const { vehicleCategory, startPoint, destination, breakLocations, startTime, endTime, rideCost, womenOnly } = req.body;
     const user = await User.findById(req.user.id);
@@ -474,9 +474,9 @@ app.post('/api/ride', auth, async (req, res) => {
     }
 });
 
-// @route   GET /api/rides/search
-// @desc    Search for available rides (Rider only)
-// @access  Private (Requires Rider role)
+// @route   GET /api/rides/search
+// @desc    Search for available rides (Rider only)
+// @access  Private (Requires Rider role)
 app.get('/api/rides/search', auth, async (req, res) => {
     const { startPoint, destination } = req.query;
     const user = await User.findById(req.user.id);
@@ -501,9 +501,9 @@ app.get('/api/rides/search', auth, async (req, res) => {
     }
 });
 
-// @route   GET /api/rides
-// @desc    Get all available rides (Rider only)
-// @access  Private (Requires Rider role)
+// @route   GET /api/rides
+// @desc    Get all available rides (Rider only)
+// @access  Private (Requires Rider role)
 app.get('/api/rides', auth, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user || user.role !== 'rider') {
@@ -512,9 +512,9 @@ app.get('/api/rides', auth, async (req, res) => {
     try {
         const now = new Date();
         const rides = await Ride.find({ status: 'created', startTime: { $gt: now } })
-            .populate('provider', 'name mobileNumber')
-            .select('-riders -liveLocation')
-            .sort({ createdAt: -1 });
+        .populate('provider', 'name mobileNumber')
+        .select('-riders -liveLocation')
+        .sort({ createdAt: -1 });
         res.json({ rides });
     } catch (err) {
         console.error('Get rides error:', err.message);
@@ -522,9 +522,9 @@ app.get('/api/rides', auth, async (req, res) => {
     }
 });
 
-// @route   POST /api/rides/book/:rideId
-// @desc    Book a ride (Rider only)
-// @access  Private (Requires Rider role)
+// @route   POST /api/rides/book/:rideId
+// @desc    Book a ride (Rider only)
+// @access  Private (Requires Rider role)
 app.post('/api/rides/book/:rideId', auth, async (req, res) => {
     try {
         const ride = await Ride.findById(req.params.rideId);
@@ -551,3 +551,59 @@ app.post('/api/rides/book/:rideId', auth, async (req, res) => {
 // Start the server
 const HOST = '0.0.0.0';
 app.listen(PORT, HOST, () => console.log(`Server running on http://${HOST}:${PORT}`));
+
+// --- OCR Preprocessing + Vision Endpoint ---
+// Accepts { imageBase64: 'data:image/...;base64,....', options?: {...} }
+// Performs preprocessing (grayscale, normalize, contrast, threshold, upscale) and returns Vision OCR text
+app.post('/api/ocr/preprocess', async (req, res) => {
+    try {
+        const { imageBase64, options } = req.body || {};
+        if (!imageBase64) {
+            return res.status(400).json({ message: 'imageBase64 is required' });
+        }
+        const base64Data = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
+        const imageBuffer = Buffer.from(base64Data, 'base64');
+        const client = new vision.ImageAnnotatorClient({
+            key: process.env.GOOGLE_CLOUD_VISION_API_KEY,
+        });
+        let image = await Jimp.read(imageBuffer);
+        image = image.normalize();
+        if (image.getWidth() < 1000) {
+            const scale = 1000 / image.getWidth();
+            image = image.resize(1000, Math.round(image.getHeight() * scale), Jimp.RESIZE_BICUBIC);
+        }
+        image = image.grayscale();
+        image = image.contrast(0.3);
+        image = image.quality(100);
+        if (options?.threshold === true) {
+            image = image.threshold({ max: options?.thresholdMax || 200 });
+        }
+        if (options?.blur) {
+            const blurVal = Math.min(Math.max(parseInt(options.blur, 10) || 1, 1), 5);
+            image = image.blur(blurVal);
+        }
+        const preprocessedMime = Jimp.MIME_PNG;
+        const preprocessedBuffer = await image.getBufferAsync(preprocessedMime);
+        const preprocessedBase64 = `data:${preprocessedMime};base64,${preprocessedBuffer.toString('base64')}`;
+        let ocrText = null;
+        try {
+            const [result] = await client.documentTextDetection({ image: { content: preprocessedBuffer } });
+            if (result?.fullTextAnnotation?.text) {
+                ocrText = result.fullTextAnnotation.text;
+            } else if (result?.textAnnotations?.[0]?.description) {
+                ocrText = result.textAnnotations[0].description;
+            }
+        } catch (visionErr) {
+            console.error('Vision OCR error:', visionErr?.message || visionErr);
+        }
+        return res.json({
+            message: 'Preprocessing complete',
+            preprocessedImageBase64: preprocessedBase64,
+            ocrText,
+        });
+    } catch (err) {
+        console.error('OCR preprocess error:', err?.message || err);
+        return res.status(500).json({ message: 'Failed to preprocess image' });
+    }
+});
+

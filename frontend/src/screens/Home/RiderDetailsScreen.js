@@ -27,6 +27,7 @@ const RiderDetailsScreen = ({ navigation }) => {
   const [aadharNumber, setAadharNumber] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
   const [aadharPhoto, setAadharPhoto] = useState(null);
+  const [livePhoto, setLivePhoto] = useState(null);
 
   const [aadharVerified, setAadharVerified] = useState(false);
   const [extractedAadhaar, setExtractedAadhaar] = useState('');
@@ -36,6 +37,7 @@ const RiderDetailsScreen = ({ navigation }) => {
 
   // New state to hold permission status
   const [mediaLibraryPermission, setMediaLibraryPermission] = useState(null);
+  const [cameraPermission, setCameraPermission] = useState(null);
 
   // Request permissions when the component mounts
   useEffect(() => {
@@ -45,6 +47,8 @@ const RiderDetailsScreen = ({ navigation }) => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         console.log('Media library permission status:', status);
         setMediaLibraryPermission(status === 'granted');
+        const cam = await ImagePicker.requestCameraPermissionsAsync();
+        setCameraPermission(cam.status === 'granted');
       } catch (error) {
         console.error('Error requesting media library permission:', error);
         Alert.alert('Permission Error', 'Failed to request media library permission. Please try again.');
@@ -59,6 +63,7 @@ const RiderDetailsScreen = ({ navigation }) => {
           if (existingDetails) {
             // Only set photo if it exists, don't auto-fill text fields
             setAadharPhoto(existingDetails.aadharPhotoUrl ? { uri: existingDetails.aadharPhotoUrl } : null);
+            setLivePhoto(existingDetails.livePhotoUrl ? { uri: existingDetails.livePhotoUrl } : null);
             setAadharVerified(existingDetails.aadharVerified);
             // Don't auto-fill aadharNumber and mobileNumber - let users enter them manually
           }
@@ -198,6 +203,27 @@ const RiderDetailsScreen = ({ navigation }) => {
     }
   };
 
+  const takeLivePhoto = async () => {
+    if (!cameraPermission) {
+      Alert.alert('Permission required', 'Camera permission is required to take a live photo.');
+      return;
+    }
+    try {
+      let result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.5,
+        base64: true,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setLivePhoto({ uri: result.assets[0].uri, base64: result.assets[0].base64 });
+      }
+    } catch (err) {
+      console.error('Live photo capture failed:', err);
+      Alert.alert('Camera Error', 'Failed to capture photo. Please try again.');
+    }
+  };
+
   const handleSaveDetails = async () => {
     // Block save when mismatch between entered and extracted Aadhaar exists
     const aadMismatch = extractedAadhaar && aadharNumber && !matchAadhaar(aadharNumber, extractedAadhaar).isMatch;
@@ -211,6 +237,7 @@ const RiderDetailsScreen = ({ navigation }) => {
         aadharNumber,
         mobileNumber,
         aadharPhotoUrl: aadharPhoto ? `data:image/jpeg;base64,${aadharPhoto.base64}` : null,
+        livePhotoUrl: livePhoto ? `data:image/jpeg;base64,${livePhoto.base64}` : null,
       };
 
       const data = await riderApi.saveDetails(details, userToken);
@@ -270,16 +297,17 @@ const RiderDetailsScreen = ({ navigation }) => {
           {/* Profile Management Section */}
           <View style={styles.profileManagementSection}>
             <Text style={styles.sectionTitle}>Profile Management</Text>
-            <View style={styles.profileActionButtons}>
+            <View style={styles.profileActionButtons}
+            >
               <TouchableOpacity
-                style={styles.profileActionButton}
+                style={[styles.profileActionButton, styles.profileActionButtonFull]}
                 onPress={() => navigation.navigate('Rides')}
               >
                 <Text style={styles.profileActionButtonText}>View Available Rides</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
-                style={styles.profileActionButton}
+                style={[styles.profileActionButton, styles.profileActionButtonFull]}
                 onPress={() => navigation.navigate('Home')}
               >
                 <Text style={styles.profileActionButtonText}>Back to Home</Text>
@@ -319,6 +347,15 @@ const RiderDetailsScreen = ({ navigation }) => {
             editable={true}
           />
 
+          {/* Live Photo */}
+          <View style={styles.livePhotoSection}>
+            <Text style={styles.sectionTitle}>Live Photo</Text>
+            <TouchableOpacity style={styles.cameraButton} onPress={takeLivePhoto}>
+              <Text style={styles.uploadButtonIcon}>📷</Text>
+            </TouchableOpacity>
+            {livePhoto && <Image source={{ uri: livePhoto.uri }} style={styles.thumbnail} />}
+          </View>
+
           {/* Clear Form Button */}
           <TouchableOpacity
             style={[styles.button, styles.clearButton]}
@@ -336,6 +373,7 @@ const RiderDetailsScreen = ({ navigation }) => {
                       setMobileNumber('');
                       setAadharPhoto(null);
                       setAadharVerified(false);
+                      setLivePhoto(null);
                     }
                   }
                 ]
@@ -356,6 +394,7 @@ const RiderDetailsScreen = ({ navigation }) => {
               <Text style={styles.buttonText}>Save Details</Text>
             )}
           </TouchableOpacity>
+
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -515,8 +554,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   profileActionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
     width: '100%',
   },
   profileActionButton: {
@@ -525,6 +564,23 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     backgroundColor: colors.primary,
     alignItems: 'center',
+    ...shadow.button,
+  },
+  profileActionButtonFull: {
+    width: '100%',
+    marginBottom: spacing.sm,
+  },
+  livePhotoSection: {
+    width: '100%',
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  cameraButton: {
+    alignSelf: 'flex-end',
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm,
     ...shadow.button,
   },
   profileActionButtonText: {

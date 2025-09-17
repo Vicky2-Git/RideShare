@@ -15,21 +15,24 @@ export const visionApi = {
 
   // ✅ Get configuration status message
   getConfigStatus: () => {
-    if (!visionApi.isConfigured()) {
-      return {
-        configured: false,
-        message: 'Google Cloud Vision API key not configured. Please update visionConfig.js or your environment variables.',
-        instructions: [
-          '1. Go to Google Cloud Console: https://console.cloud.google.com/',
-          '2. Create a new project or select an existing one',
-          '3. Enable the Cloud Vision API',
-          '4. Go to Credentials',
-          '5. Create an API key',
-          '6. Store it in src/config/visionConfig.js or in an environment variable',
-          '7. Restrict the API key to only Cloud Vision API for security'
-        ]
-      };
-    }
+  if (!visionApi.isConfigured()) {
+    return {
+      configured: false,
+      message: 'Google Cloud Vision API key not configured. Please add it to your environment variables (.env file).',
+      instructions: [
+        '1. Go to Google Cloud Console: https://console.cloud.google.com/',
+        '2. Create a new project or select an existing one',
+        '3. Enable the Cloud Vision API',
+        '4. Go to Credentials',
+        '5. Create an API key',
+        '6. Open your project root and create a .env file (if not exists)',
+        '7. Add GOOGLE_CLOUD_VISION_API_KEY=your_api_key_here',
+        '8. Restart your development server after saving the .env file',
+        '9. Restrict the API key to only Cloud Vision API for security'
+      ]
+    };
+  }
+
     return {
       configured: true,
       message: 'Google Cloud Vision API is properly configured.',
@@ -89,10 +92,46 @@ export const visionApi = {
     }
   },
 
+  // ✅ Backend-assisted preprocess + OCR
+  preprocessAndExtract: async (base64Image, preprocessOptions = { threshold: true, thresholdMax: 200, blur: 0 }) => {
+    try {
+      // Use backend API base from utils/api to avoid duplicating base URLs
+      const res = await fetch('http://10.102.150.205:5000/api/ocr/preprocess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64Image, options: preprocessOptions })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Preprocess API error ${res.status}: ${text?.slice(0, 120)}`);
+      }
+      const data = await res.json();
+      return data; // { preprocessedImageBase64, ocrText }
+    } catch (err) {
+      console.error('preprocessAndExtract error:', err);
+      throw err;
+    }
+  },
+
+  // ✅ Try preprocess route first, fallback to direct Vision
+  smartExtractText: async (base64Image, preprocessOptions) => {
+    try {
+      const { ocrText, preprocessedImageBase64 } = await visionApi.preprocessAndExtract(base64Image, preprocessOptions);
+      if (ocrText && ocrText.trim().length > 0) return { text: ocrText, preprocessedImageBase64 };
+      // Fallback
+      const text = await visionApi.extractTextFromImage(preprocessedImageBase64 || base64Image);
+      return { text, preprocessedImageBase64 };
+    } catch (_) {
+      const text = await visionApi.extractTextFromImage(base64Image);
+      return { text, preprocessedImageBase64: null };
+    }
+  },
+
   // ✅ Extract specific information from license document
   extractLicenseInfo: async (base64Image) => {
     try {
-      const extractedText = await visionApi.extractTextFromImage(base64Image);
+      const extracted = await visionApi.smartExtractText(base64Image);
+      const extractedText = extracted?.text;
       if (!extractedText) return null;
 
       const lines = extractedText.split('\n');
@@ -132,7 +171,8 @@ export const visionApi = {
   // ✅ Extract Aadhaar number
   extractAadhaarInfo: async (base64Image) => {
     try {
-      const extractedText = await visionApi.extractTextFromImage(base64Image);
+      const extracted = await visionApi.smartExtractText(base64Image);
+      const extractedText = extracted?.text;
       if (!extractedText) return null;
 
       const aadhaarMatch = extractedText.match(/\b\d{4}\s?\d{4}\s?\d{4}\b/);
@@ -153,7 +193,8 @@ export const visionApi = {
   // ✅ Extract RC number
   extractRCInfo: async (base64Image) => {
     try {
-      const extractedText = await visionApi.extractTextFromImage(base64Image);
+      const extracted = await visionApi.smartExtractText(base64Image);
+      const extractedText = extracted?.text;
       if (!extractedText) return null;
 
       const rcMatch = extractedText.match(/\b[A-Z]{2}\d{2}[A-Z]{2}\d{4}\b/);

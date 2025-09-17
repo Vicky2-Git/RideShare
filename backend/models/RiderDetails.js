@@ -14,6 +14,8 @@ const RiderDetailsSchema = new mongoose.Schema({
     mobileNumber: { type: String, required: true, unique: true }, // Ensure consistency, though already in User
     // Storing image URLs (or paths)
     aadharPhotoUrl: { type: String },
+    // New: live selfie photo
+    livePhotoUrl: { type: String },
 
     // Verification status fields
     aadharVerified: { type: Boolean, default: false },

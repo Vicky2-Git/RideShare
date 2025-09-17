@@ -39,6 +39,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
   const [rcPhoto, setRcPhoto] = useState(null);
   const [licensePhoto, setLicensePhoto] = useState(null);
   const [aadharPhoto, setAadharPhoto] = useState(null);
+  const [livePhoto, setLivePhoto] = useState(null);
 
   const [rcVerified, setRcVerified] = useState(false);
   const [insuranceVerified, setInsuranceVerified] = useState(false);
@@ -89,6 +90,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
             setRcPhoto(existingDetails.rcPhotoUrl ? { uri: existingDetails.rcPhotoUrl } : null);
             setLicensePhoto(existingDetails.licensePhotoUrl ? { uri: existingDetails.licensePhotoUrl } : null);
             setAadharPhoto(existingDetails.aadharPhotoUrl ? { uri: existingDetails.aadharPhotoUrl } : null);
+            setLivePhoto(existingDetails.livePhotoUrl ? { uri: existingDetails.livePhotoUrl } : null);
 
             // Set verification statuses
             setRcVerified(existingDetails.rcVerified);
@@ -196,12 +198,9 @@ const ProviderDetailsScreen = ({ navigation }) => {
                   // Auto-fill license number if found
                   if (licenseInfo.licenseNumber) {
                     setLicenseNumber(licenseInfo.licenseNumber);
-                    // Show data matching result
-                    Alert.alert(
-                      'OCR Success - License', 
-                      `✅ Document Successfully Analyzed!\n\n📋 Extracted Data:\n• Name: ${licenseInfo.name || 'Not found'}\n• License: ${licenseInfo.licenseNumber}\n• DOB: ${licenseInfo.dob || 'Not found'}\n• Validity: ${licenseInfo.validity || 'Not found'}\n\n🔍 Auto-fill Status:\n• License number has been auto-filled\n\n⚠️ Please verify the extracted data matches your document exactly.`
-                    );
                   }
+                  // Show success message without blocking alert
+                  Alert.alert('OCR Success', 'License document analyzed successfully. Extracted data is displayed below.');
                 } else {
                   Alert.alert('OCR Warning', 'Could not extract license information. Please ensure the image is clear and contains readable text.');
                 }
@@ -331,6 +330,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
         rcPhotoUrl: rcPhoto ? `data:image/jpeg;base64,${rcPhoto.base64}` : null,
         licensePhotoUrl: licensePhoto ? `data:image/jpeg;base64,${licensePhoto.base64}` : null,
         aadharPhotoUrl: aadharPhoto ? `data:image/jpeg;base64,${aadharPhoto.base64}` : null,
+        livePhotoUrl: livePhoto ? `data:image/jpeg;base64,${livePhoto.base64}` : null,
       };
       
       const data = await providerApi.saveDetails(details, userToken);
@@ -549,6 +549,39 @@ const ProviderDetailsScreen = ({ navigation }) => {
                   <Text style={styles.extractedText}>Extracted: {ocrDetails.licenseNumber}{licenseNumber && !matchLicenseNumber(licenseNumber, ocrDetails.licenseNumber).isMatch ? ' • Mismatch' : ''}</Text>
                 ) : null}
                 {licenseVerified && <Text style={[styles.verifiedBadge, styles.verifiedBadgeText]}>✓ Verified</Text>}
+                
+                {/* Extracted License Data Display */}
+                {ocrDetails && (ocrDetails.name || ocrDetails.licenseNumber || ocrDetails.dob || ocrDetails.validity) && (
+                  <View style={styles.extractedDataSection}>
+                    <Text style={styles.extractedDataTitle}>📋 Extracted Data</Text>
+                    <View style={styles.extractedDataGrid}>
+                      {ocrDetails.name && (
+                        <View style={styles.extractedDataItem}>
+                          <Text style={styles.extractedDataLabel}>Name:</Text>
+                          <Text style={styles.extractedDataValue}>{ocrDetails.name}</Text>
+                        </View>
+                      )}
+                      {ocrDetails.licenseNumber && (
+                        <View style={styles.extractedDataItem}>
+                          <Text style={styles.extractedDataLabel}>License Number:</Text>
+                          <Text style={styles.extractedDataValue}>{ocrDetails.licenseNumber}</Text>
+                        </View>
+                      )}
+                      {ocrDetails.dob && (
+                        <View style={styles.extractedDataItem}>
+                          <Text style={styles.extractedDataLabel}>Date of Birth:</Text>
+                          <Text style={styles.extractedDataValue}>{ocrDetails.dob}</Text>
+                        </View>
+                      )}
+                      {ocrDetails.validity && (
+                        <View style={styles.extractedDataItem}>
+                          <Text style={styles.extractedDataLabel}>Validity:</Text>
+                          <Text style={styles.extractedDataValue}>{ocrDetails.validity}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
           </View>
 
               <View style={styles.documentItem}>
@@ -604,6 +637,22 @@ const ProviderDetailsScreen = ({ navigation }) => {
             )}
           </View>
 
+          {/* Live Photo Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Live Photo</Text>
+            <View style={styles.uploadContainer}>
+              <TouchableOpacity
+                style={styles.uploadButton}
+                onPress={() => takeLivePhoto(setLivePhoto)}
+              >
+                <Text style={styles.uploadIcon}>📷</Text>
+              </TouchableOpacity>
+            </View>
+            {livePhoto && (
+              <Image source={{ uri: livePhoto.uri }} style={styles.documentThumbnail} />
+            )}
+          </View>
+
           {/* Action Buttons */}
           <View style={styles.actionSection}>
             <View style={styles.actionRow}>
@@ -620,6 +669,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
                   setRcPhoto(null);
                   setLicensePhoto(null);
                   setAadharPhoto(null);
+                  setLivePhoto(null);
                   setRcVerified(false);
                   setInsuranceVerified(false);
                   setLicenseVerified(false);
@@ -652,6 +702,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
                       setRcPhoto(null);
                       setLicensePhoto(null);
                       setAadharPhoto(null);
+                      setLivePhoto(null);
                       setRcVerified(false);
                       setInsuranceVerified(false);
                       setLicenseVerified(false);
@@ -1015,6 +1066,43 @@ const styles = StyleSheet.create({
   },
   ocrStatusBold: {
     fontWeight: 'bold',
+  },
+  extractedDataSection: {
+    width: '100%',
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  extractedDataTitle: {
+    ...typography.h4,
+    marginBottom: spacing.sm,
+    color: colors.textPrimary,
+    fontWeight: 'bold',
+  },
+  extractedDataGrid: {
+    flexDirection: 'column',
+    gap: spacing.xs,
+  },
+  extractedDataItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  extractedDataLabel: {
+    ...typography.body,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    flex: 1,
+  },
+  extractedDataValue: {
+    ...typography.body,
+    color: colors.textPrimary,
+    flex: 2,
+    textAlign: 'right',
   },
 });
 

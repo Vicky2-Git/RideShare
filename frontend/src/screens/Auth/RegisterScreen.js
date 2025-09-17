@@ -14,6 +14,7 @@ import {
   ScrollView,
   Platform,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { AuthContext } from '../../context/AuthContext';
 import { authApi } from '../../utils/api';
@@ -24,6 +25,8 @@ const RegisterScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [gender, setGender] = useState('Male');
   const [age, setAge] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
@@ -108,22 +111,50 @@ const RegisterScreen = ({ navigation }) => {
             keyboardType="email-address"
             autoCapitalize="none"
           />
-          <TextInput
-            style={styles.input}
-            placeholder="Password (min 6 chars, incl. A-Z, a-z, 0-9)"
-            placeholderTextColor={colors.placeholder}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm Password"
-            placeholderTextColor={colors.placeholder}
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-          />
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={[styles.input, styles.inputWithIcon]}
+              placeholder="Password (min 6 chars, incl. A-Z, a-z, 0-9)"
+              placeholderTextColor={colors.placeholder}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+              onPress={() => setShowPassword((prev) => !prev)}
+              style={styles.eyeIcon}
+            >
+              <MaterialCommunityIcons
+                name={showPassword ? 'eye-off' : 'eye'}
+                size={22}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={[styles.input, styles.inputWithIcon]}
+              placeholder="Confirm Password"
+              placeholderTextColor={colors.placeholder}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showConfirmPassword}
+            />
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={showConfirmPassword ? 'Hide password' : 'Show password'}
+              onPress={() => setShowConfirmPassword((prev) => !prev)}
+              style={styles.eyeIcon}
+            >
+              <MaterialCommunityIcons
+                name={showConfirmPassword ? 'eye-off' : 'eye'}
+                size={22}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.pickerContainer}>
             <Text style={styles.pickerLabel}>Gender:</Text>
@@ -267,6 +298,23 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  inputWrapper: {
+    width: '100%',
+    position: 'relative',
+    marginBottom: spacing.md,
+  },
+  inputWithIcon: {
+    paddingRight: spacing.xl || spacing.lg,
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: spacing.sm,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
   },
 });
 

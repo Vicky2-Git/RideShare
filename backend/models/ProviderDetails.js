@@ -23,6 +23,8 @@ const ProviderDetailsSchema = new mongoose.Schema({
     insurancePhotoUrl: { type: String },
     licensePhotoUrl: { type: String },
     aadharPhotoUrl: { type: String },
+    // New: live selfie photo
+    livePhotoUrl: { type: String },
 
     // Verification status fields
     rcVerified: { type: Boolean, default: false },
