@@ -9,7 +9,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // - For Physical Android Device: 'http://YOUR_LOCAL_IP_ADDRESS:5000/api' (e.g., 'http://192.168.1.100:5000/api')
 // - For iOS Simulator/Device: 'http://localhost:5000/api' (or your local IP)
 // - For Web (if you ever build a web version with Expo): 'http://localhost:5000/api'
-const API_BASE_URL = 'http://10.15.98.205:5000/api'; // Default for Android Emulator
+// - For Expo Go app: Use your machine's IP address
+const API_BASE_URL = 'http://192.168.29.117:5000/api'; // Updated for current network
 
 // Generic function to make API calls
 export const apiCall = async (endpoint, method = 'GET', data = null, token = null) => {
@@ -123,4 +124,37 @@ export const rideApi = {
   getProviderRides: (token) => apiCall('/provider/rides', 'GET', null, token),
   bookRide: (rideId, token) => apiCall(`/rides/book/${rideId}`, 'POST', null, token),
   deleteRide: (rideId, token) => apiCall(`/provider/rides/${rideId}`, 'DELETE', null, token),
+};
+
+// Updated API key for Google Maps Geocoding API
+export const getFormattedAddress = async (coordinates) => {
+  const GOOGLE_MAPS_API_KEY = 'AIzaSyCAgmdjzn-ANlzIcc8UKhP0IHQtgGiesXg'; // Updated API key
+
+  // Validate coordinates
+  if (!coordinates || typeof coordinates !== 'string' || !coordinates.includes(',')) {
+    console.error('Invalid coordinates format:', coordinates);
+    return null;
+  }
+
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${coordinates}&key=${GOOGLE_MAPS_API_KEY}`;
+
+  console.log('Fetching address for coordinates:', coordinates);
+  console.log('Geocoding API URL:', url);
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    console.log('Geocoding API response:', data);
+
+    if (data.status === 'OK' && data.results.length > 0) {
+      return data.results[0].formatted_address;
+    } else {
+      console.error('Geocoding API error:', data.status, data.error_message);
+      return null;
+    }
+  } catch (error) {
+    console.error('Failed to fetch address:', error);
+    return null;
+  }
 };
