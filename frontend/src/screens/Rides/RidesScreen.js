@@ -13,7 +13,8 @@ import {
   Alert,
 } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
-import { rideApi, providerApi } from '../../utils/api';
+import { rideApi, providerApi, ocrApi } from '../../utils/api';
+import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, borderRadius, typography, shadow } from '../../styles/theme';
 
 const RidesScreen = ({ navigation }) => {
@@ -22,12 +23,25 @@ const RidesScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [providerDetails, setProviderDetails] = useState(null);
+  const [aadharNumber, setAadharNumber] = useState('');
+  const [aadharPhoto, setAadharPhoto] = useState(null);
+  const [extractedAadhaar, setExtractedAadhaar] = useState('');
+  const [mediaLibraryPermission, setMediaLibraryPermission] = useState(null);
+  const [aadhaarInfo, setAadhaarInfo] = useState({ name: '', dob: '', gender: '' });
 
   useEffect(() => {
     loadRides();
     if (userRole === 'provider') {
       loadProviderDetails();
     }
+    // Request permission for image library if rider wants to upload Aadhaar on this screen
+    const requestPerms = async () => {
+      try {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        setMediaLibraryPermission(status === 'granted');
+      } catch (_) {}
+    };
+    requestPerms();
   }, [userRole]);
 
   const loadProviderDetails = async () => {
@@ -165,6 +179,78 @@ const RidesScreen = ({ navigation }) => {
     }
   };
 
+  // Aadhaar upload + OCR for riders on this page
+  const uploadAadhaarForBooking = async () => {
+    try {
+      if (!mediaLibraryPermission) {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        setMediaLibraryPermission(status === 'granted');
+        if (status !== 'granted') {
+          Alert.alert('Permission required', 'Media library permission is required to upload photos.');
+          return;
+        }
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true, // keep editing but do not force aspect to avoid diagonal crop
+        quality: 0.8,
+        base64: true,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const asset = result.assets[0];
+      const imageData = { uri: asset.uri, base64: asset.base64 };
+      setAadharPhoto(imageData);
+      if (asset.base64 && userToken) {
+        const { text } = await ocrApi.extractText(`data:image/jpeg;base64,${asset.base64}`, userToken);
+        if (text && typeof text === 'string') {
+          const aadMatch = text.match(/\b\d{4}\s?\d{4}\s?\d{4}\b/);
+          if (aadMatch) {
+            const normalized = aadMatch[0].replace(/\s/g, '');
+            setAadharNumber(normalized);
+            setExtractedAadhaar(normalized);
+            // Extract name, DOB/YOB, and gender from OCR text
+            const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            // Gender
+            const genderMatch = text.match(/\b(MALE|FEMALE|OTHER)\b/i);
+            const gender = genderMatch ? (genderMatch[0].charAt(0).toUpperCase() + genderMatch[0].slice(1).toLowerCase()) : '';
+            // DOB or YOB
+            let dob = '';
+            const dobLineMatch = text.match(/(dob|date\s*of\s*birth|yob|year\s*of\s*birth)[^\d]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\b\d{4}\b)/i);
+            if (dobLineMatch) {
+              dob = dobLineMatch[2];
+            } else {
+              const anyDate = text.match(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/);
+              dob = anyDate ? anyDate[0] : '';
+            }
+            // Name
+            let name = '';
+            const nameLabelMatch = text.match(/name\s*[:\-]?\s*([A-Za-z ,.']{3,})/i);
+            if (nameLabelMatch) {
+              name = nameLabelMatch[1].trim();
+            } else {
+              const exclude = /(government|india|unique|identification|authority|aadhaar|address|dob|yob|date|gender|male|female|year|of|birth)/i;
+              const candidate = lines.find(l => /[A-Za-z]{3,}/.test(l) && !exclude.test(l));
+              if (candidate) name = candidate.replace(/^[^A-Za-z]*/, '').trim();
+            }
+            setAadhaarInfo({ name, dob, gender });
+            let msg = `Detected Aadhaar: ${normalized}`;
+            if (name) msg += `\nName: ${name}`;
+            if (dob) msg += `\nDOB/YOB: ${dob}`;
+            if (gender) msg += `\nGender: ${gender}`;
+            Alert.alert('Aadhaar Detected', msg);
+          } else {
+            Alert.alert('OCR', 'No Aadhaar number detected. Please try a clearer image.');
+          }
+        } else {
+          Alert.alert('OCR', 'No text detected in the image.');
+        }
+      }
+    } catch (e) {
+      console.error('Aadhaar upload/OCR failed:', e);
+      Alert.alert('Error', 'Failed to process Aadhaar image. Please try again.');
+    }
+  };
+
   const renderRideCard = (ride) => {
     const formatTime = (dateString) => {
       const date = new Date(dateString);
@@ -280,6 +366,32 @@ const RidesScreen = ({ navigation }) => {
               <Text style={styles.profileButtonText}>How to Book a Ride</Text>
             </TouchableOpacity>
           )}
+
+          {userRole === 'rider' && (
+            <TouchableOpacity
+              style={styles.profileButton}
+              onPress={uploadAadhaarForBooking}
+            >
+              <Text style={styles.profileButtonText}>Upload Aadhaar for Booking</Text>
+            </TouchableOpacity>
+          )}
+
+          {userRole === 'rider' && (extractedAadhaar || aadhaarInfo.name || aadhaarInfo.dob || aadhaarInfo.gender) ? (
+            <View style={{ alignItems: 'center', marginBottom: spacing.sm }}>
+              {extractedAadhaar ? (
+                <Text style={{ ...typography.body, color: colors.textSecondary }}>Extracted Aadhaar: {extractedAadhaar}</Text>
+              ) : null}
+              {aadhaarInfo.name ? (
+                <Text style={{ ...typography.body, color: colors.textSecondary }}>Name: {aadhaarInfo.name}</Text>
+              ) : null}
+              {aadhaarInfo.dob ? (
+                <Text style={{ ...typography.body, color: colors.textSecondary }}>DOB/YOB: {aadhaarInfo.dob}</Text>
+              ) : null}
+              {aadhaarInfo.gender ? (
+                <Text style={{ ...typography.body, color: colors.textSecondary }}>Gender: {aadhaarInfo.gender}</Text>
+              ) : null}
+            </View>
+          ) : null}
           
           {userRole === 'provider' && (
             <TouchableOpacity

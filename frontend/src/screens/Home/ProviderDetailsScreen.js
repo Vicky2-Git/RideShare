@@ -18,10 +18,9 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { AuthContext } from '../../context/AuthContext';
-import { providerApi } from '../../utils/api';
-import { visionApi } from '../../services/visionApi';
+import { providerApi, ocrApi } from '../../utils/api';
 import { colors, spacing, borderRadius, typography, shadow } from '../../styles/theme';
-import { matchAadhaar, matchRcNumber, matchLicenseNumber } from '../../utils/fuzzyMatch';
+// Removed OCR-based fuzzy match usage
 
 const ProviderDetailsScreen = ({ navigation }) => {
   const { userToken, userRole } = useContext(AuthContext);
@@ -98,15 +97,13 @@ const ProviderDetailsScreen = ({ navigation }) => {
             setLicenseVerified(existingDetails.licenseVerified);
             setAadharVerified(existingDetails.aadharVerified);
             
-            // Set OCR details if available
+            // Populate prior extracted values if your backend had saved any (optional fields may be absent)
             setOcrDetails({
               name: existingDetails.ocrExtractedName,
               licenseNumber: existingDetails.ocrExtractedLicenseNumber,
               dob: existingDetails.ocrExtractedDob,
               validity: existingDetails.ocrExtractedValidity,
             });
-            setExtractedRc(existingDetails.ocrExtractedRcNumber || '');
-            setExtractedAadhaar(existingDetails.ocrExtractedAadhaarNumber || '');
             
             // Don't auto-fill text input fields - let users enter them manually
             // setVehicleNumber, setRcNumber, setInsuranceNumber, setLicenseNumber, setAadharNumber
@@ -171,95 +168,47 @@ const ProviderDetailsScreen = ({ navigation }) => {
         console.log('Image data URI length:', imageData.uri ? imageData.uri.length : 'No URI');
         console.log('Image data base64 length:', imageData.base64 ? imageData.base64.length : 'No base64');
         setImageFunction(imageData);
-        
-        // Perform OCR verification if document type is specified
-        if (documentType && imageData.base64) {
+        if (documentType && imageData.base64 && userToken) {
           try {
-            console.log(`Performing OCR verification for ${documentType}...`);
-            
-            // Check if Vision API is configured
-            if (!visionApi.isConfigured()) {
-              Alert.alert(
-                'OCR Not Available', 
-                'Document analysis is not configured. Please contact support to enable this feature.\n\nFor now, you can manually enter the document details.',
-                [{ text: 'OK', style: 'default' }]
-              );
-              return;
-            }
-            
-            // Show OCR progress
-            Alert.alert('OCR Processing', 'Analyzing document... Please wait.');
-            
-            switch (documentType) {
-              case 'license':
-                const licenseInfo = await visionApi.extractLicenseInfo(imageData.base64);
-                if (licenseInfo) {
-                  setOcrDetails(licenseInfo);
-                  // Auto-fill license number if found
-                  if (licenseInfo.licenseNumber) {
-                    setLicenseNumber(licenseInfo.licenseNumber);
-                  }
-                  // Show success message without blocking alert
-                  Alert.alert('OCR Success', 'License document analyzed successfully. Extracted data is displayed below.');
-                } else {
-                  Alert.alert('OCR Warning', 'Could not extract license information. Please ensure the image is clear and contains readable text.');
+            const { text } = await ocrApi.extractText(`data:image/jpeg;base64,${imageData.base64}`, userToken);
+            if (text && typeof text === 'string') {
+              if (documentType === 'rc') {
+                const rcMatch = text.match(/\b[A-Z]{2}\d{2}[A-Z]{2}\d{4}\b/);
+                if (rcMatch) {
+                  setRcNumber(rcMatch[0]);
+                  setExtractedRc(rcMatch[0]);
+                  Alert.alert('OCR', `RC detected: ${rcMatch[0]}`);
                 }
-                break;
-                
-              case 'rc':
-                const rcInfo = await visionApi.extractRCInfo(imageData.base64);
-                if (rcInfo && rcInfo.rcNumber) {
-                  setRcNumber(rcInfo.rcNumber);
-                  setExtractedRc(rcInfo.rcNumber);
-                  Alert.alert(
-                    'OCR Success - RC', 
-                    `✅ Document Successfully Analyzed!\n\n📋 Extracted Data:\n• RC Number: ${rcInfo.rcNumber}\n\n🔍 Auto-fill Status:\n• RC number has been auto-filled\n\n⚠️ Please verify the extracted RC number matches your document exactly.`
-                  );
-                } else {
-                  Alert.alert('OCR Warning', 'Could not extract RC number. Please ensure the image is clear and contains readable text.');
+              } else if (documentType === 'aadhar') {
+                const aadMatch = text.match(/\b\d{4}\s?\d{4}\s?\d{4}\b/);
+                if (aadMatch) {
+                  const normalized = aadMatch[0].replace(/\s/g, '');
+                  setAadharNumber(normalized);
+                  setExtractedAadhaar(normalized);
+                  Alert.alert('OCR', `Aadhaar detected: ${normalized}`);
                 }
-                break;
-                
-              case 'aadhar':
-                const aadharInfo = await visionApi.extractAadharInfo(imageData.base64);
-                if (aadharInfo && aadharInfo.aadhaarNumber) {
-                  setAadharNumber(aadharInfo.aadhaarNumber);
-                  setExtractedAadhaar(aadharInfo.aadhaarNumber);
-                  Alert.alert(
-                    'OCR Success - Aadhaar', 
-                    `✅ Document Successfully Analyzed!\n\n📋 Extracted Data:\n• Aadhaar Number: ${aadharInfo.aadhaarNumber}\n\n🔍 Auto-fill Status:\n• Aadhaar number has been auto-filled\n\n⚠️ Please verify the extracted Aadhaar number matches your document exactly.`
-                  );
-                } else {
-                  Alert.alert('OCR Warning', 'Could not extract Aadhaar number. Please ensure the image is clear and contains readable text.');
+              } else if (documentType === 'license') {
+                const licMatch = text.match(/\b[A-Z]{2}\d{13}\b|\b[A-Z]{2}\d{2}\s?\d{11}\b/);
+                if (licMatch) {
+                  const normalized = licMatch[0].replace(/\s/g, '');
+                  setLicenseNumber(normalized);
+                  setOcrDetails({ ...ocrDetails, licenseNumber: normalized });
+                  Alert.alert('OCR', `License detected: ${normalized}`);
                 }
-                break;
-                
-              default:
-                break;
+                // Optional simple extractions
+                const nameLine = text.split('\n').find(l => /name/i.test(l));
+                const dobMatch = text.match(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/);
+                const validityMatch = text.match(/(valid|expiry|exp)[^\d]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+                setOcrDetails(prev => ({
+                  ...prev,
+                  name: prev.name || (nameLine ? nameLine.replace(/.*name[:\-]?\s*/i, '').trim() : ''),
+                  dob: prev.dob || (dobMatch ? dobMatch[0] : ''),
+                  validity: prev.validity || (validityMatch ? validityMatch[2] : ''),
+                }));
+              }
             }
-          } catch (ocrError) {
-            console.error('OCR verification failed:', ocrError);
-            
-            // Handle specific OCR errors
-            if (ocrError.message.includes('API key not configured')) {
-              Alert.alert(
-                'OCR Not Configured', 
-                'Document analysis is not properly configured. Please contact support.\n\nFor now, you can manually enter the document details.',
-                [{ text: 'OK', style: 'default' }]
-              );
-            } else if (ocrError.message.includes('Failed to extract text')) {
-              Alert.alert(
-                'OCR Failed', 
-                'Could not read text from the image. Please ensure:\n• Image is clear and well-lit\n• Text is readable\n• Document is not damaged\n\nYou can still manually enter the details.',
-                [{ text: 'OK', style: 'default' }]
-              );
-            } else {
-              Alert.alert(
-                'OCR Error', 
-                'Document analysis failed. Please try again with a clearer image or enter details manually.',
-                [{ text: 'OK', style: 'default' }]
-              );
-            }
+          } catch (e) {
+            console.error('OCR call failed:', e);
           }
         }
       } else {
@@ -282,11 +231,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
           const imageData = { uri: fallbackResult.assets[0].uri, base64: fallbackResult.assets[0].base64 };
           setImageFunction(imageData);
           
-          // Perform OCR verification if document type is specified
-          if (documentType && imageData.base64) {
-            // ... OCR logic would go here (same as above)
-            console.log('OCR verification would proceed with fallback method');
-          }
+          // OCR fallback not implemented
         }
       } catch (fallbackError) {
         console.error('Fallback image picker also failed:', fallbackError);
@@ -313,13 +258,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
 
   const handleSaveDetails = async () => {
     // Check mismatches before save
-    const rcMismatch = extractedRc && rcNumber && !matchRcNumber(rcNumber, extractedRc).isMatch;
-    const licMismatch = ocrDetails?.licenseNumber && licenseNumber && !matchLicenseNumber(licenseNumber, ocrDetails.licenseNumber).isMatch;
-    const aadMismatch = extractedAadhaar && aadharNumber && !matchAadhaar(aadharNumber, extractedAadhaar).isMatch;
-    if (rcMismatch || licMismatch || aadMismatch) {
-      Alert.alert('Mismatch detected', 'Your entered values do not match the extracted document data. Please review the highlighted mismatches shown below and correct them before continuing.');
-      return;
-    }
+    // Removed OCR-based mismatch checks
     setLoading(true);
     try {
       const details = {
@@ -335,19 +274,9 @@ const ProviderDetailsScreen = ({ navigation }) => {
       
       const data = await providerApi.saveDetails(details, userToken);
       
-      // Show success with OCR verification summary
-      let ocrSummary = '';
-      if (ocrDetails.name || ocrDetails.licenseNumber || ocrDetails.dob || ocrDetails.validity) {
-        ocrSummary = '\n\nOCR Verification Summary:\n';
-        if (ocrDetails.name) ocrSummary += `• Name: ${ocrDetails.name}\n`;
-        if (ocrDetails.licenseNumber) ocrSummary += `• License: ${ocrDetails.licenseNumber}\n`;
-        if (ocrDetails.dob) ocrSummary += `• DOB: ${ocrDetails.dob}\n`;
-        if (ocrDetails.validity) ocrSummary += `• Validity: ${ocrDetails.validity}\n`;
-      }
-      
       Alert.alert(
         'Success!', 
-        `${data.message}${ocrSummary}\n\nAll details have been saved successfully. You can now provide rides!`,
+        `${data.message}\n\nAll details have been saved successfully. You can now provide rides!`,
         [
           {
             text: 'Continue to Rides',
@@ -367,12 +296,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
       setInsuranceVerified(data.providerDetails.insuranceVerified);
       setLicenseVerified(data.providerDetails.licenseVerified);
       setAadharVerified(data.providerDetails.aadharVerified);
-      setOcrDetails({
-        name: data.providerDetails.ocrExtractedName, 
-        licenseNumber: data.providerDetails.ocrExtractedLicenseNumber,
-        dob: data.providerDetails.ocrExtractedDob, 
-        validity: data.providerDetails.ocrExtractedValidity,
-      });
+      // Removed OCR details from response handling
     } catch (error) {
       console.error('Save provider details error:', error);
       Alert.alert('Error', error.message || 'Failed to save details. Please try again.');
@@ -478,15 +402,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
             <Text style={styles.sectionTitle}>Document Verification</Text>
             <Text style={styles.sectionSubtitle}>Upload required documents for verification</Text>
             
-            {/* OCR Status Message */}
-            {!visionApi.isConfigured() && (
-              <View style={styles.ocrStatusMessage}>
-                <Text style={styles.ocrStatusText}>
-                  📝 <Text style={styles.ocrStatusBold}>Document Analysis:</Text> Currently unavailable. 
-                  Please manually enter your document details below.
-                </Text>
-              </View>
-            )}
+            {/* OCR Status Message removed */}
 
             <View style={styles.documentGrid}>
               <View style={styles.documentItem}>
@@ -508,7 +424,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
                 </View>
                 {rcPhoto && <Image source={{ uri: rcPhoto.uri }} style={styles.documentThumbnail} />}
                 {extractedRc ? (
-                  <Text style={styles.extractedText}>Extracted: {extractedRc}{rcNumber && !matchRcNumber(rcNumber, extractedRc).isMatch ? ' • Mismatch' : ''}</Text>
+                  <Text style={styles.extractedText}>Extracted: {extractedRc}</Text>
                 ) : null}
                 {rcVerified && <Text style={[styles.verifiedBadge, styles.verifiedBadgeText]}>✓ Verified</Text>}
           </View>
@@ -546,7 +462,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
               </View>
                 {licensePhoto && <Image source={{ uri: licensePhoto.uri }} style={styles.documentThumbnail} />}
                 {ocrDetails?.licenseNumber ? (
-                  <Text style={styles.extractedText}>Extracted: {ocrDetails.licenseNumber}{licenseNumber && !matchLicenseNumber(licenseNumber, ocrDetails.licenseNumber).isMatch ? ' • Mismatch' : ''}</Text>
+                  <Text style={styles.extractedText}>Extracted: {ocrDetails.licenseNumber}</Text>
                 ) : null}
                 {licenseVerified && <Text style={[styles.verifiedBadge, styles.verifiedBadgeText]}>✓ Verified</Text>}
                 
@@ -605,7 +521,7 @@ const ProviderDetailsScreen = ({ navigation }) => {
                 </View>
                 {aadharPhoto && <Image source={{ uri: aadharPhoto.uri }} style={styles.documentThumbnail} />}
                 {extractedAadhaar ? (
-                  <Text style={styles.extractedText}>Extracted: {extractedAadhaar}{aadharNumber && !matchAadhaar(aadharNumber, extractedAadhaar).isMatch ? ' • Mismatch' : ''}</Text>
+                  <Text style={styles.extractedText}>Extracted: {extractedAadhaar}</Text>
                 ) : null}
                 {aadharVerified && <Text style={[styles.verifiedBadge, styles.verifiedBadgeText]}>✓ Verified</Text>}
               </View>

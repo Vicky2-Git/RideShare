@@ -32,11 +32,7 @@ const ProviderDetailsSchema = new mongoose.Schema({
     licenseVerified: { type: Boolean, default: false },
     aadharVerified: { type: Boolean, default: false },
 
-    // Driver License OCR extracted details (simulated)
-    ocrExtractedName: { type: String },
-    ocrExtractedLicenseNumber: { type: String },
-    ocrExtractedDob: { type: String },
-    ocrExtractedValidity: { type: String },
+    // (Removed) OCR extracted details
 
     // Flag for previously used vehicle (for auto-fill simulation)
     isPreviouslyUsedVehicle: { type: Boolean, default: false },

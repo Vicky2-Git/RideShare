@@ -12,6 +12,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const { check, validationResult } = require('express-validator');
+const path = require('path');
 
 // Import new models
 const ProviderDetails = require('./models/ProviderDetails');
@@ -80,17 +81,7 @@ const dummyVerificationData = {
     }
 };
 
-// --- OCR Service Function Placeholder (Simulating OCR API) ---
-const simulateOcr = (base64Image) => {
-    console.log("Simulating OCR on image data...");
-    const dummyOcrData = {
-        name: 'John Doe',
-        licenseNumber: 'DL9876543210',
-        dob: '1990-05-15',
-        validity: '2030-05-15',
-    };
-    return dummyOcrData;
-};
+// (Removed) OCR simulation and related code
 
 // --- Routes ---
 
@@ -262,35 +253,15 @@ app.post('/api/provider/details', auth, async (req, res) => {
         const rcVerified = dummyVerificationData.rc[rcNumber]?.isValid || false;
         const insuranceVerified = dummyVerificationData.insurance[insuranceNumber]?.isValid || false;
         const aadharVerified = dummyVerificationData.aadhar[aadharNumber]?.isValid || false;
-        let licenseVerified = false;
-        let ocrExtractedName = null;
-        let ocrExtractedLicenseNumber = null;
-        let ocrExtractedDob = null;
-        let ocrExtractedValidity = null;
-        if (licensePhotoUrl) {
-            try {
-                const ocrResult = simulateOcr(licensePhotoUrl);
-                ocrExtractedName = ocrResult.name;
-                ocrExtractedLicenseNumber = ocrResult.licenseNumber;
-                ocrExtractedDob = ocrResult.dob;
-                ocrExtractedValidity = ocrResult.validity;
-                if (ocrExtractedName === user.name &&
-                    ocrExtractedLicenseNumber === licenseNumber &&
-                    dummyVerificationData.license[licenseNumber]?.isValid &&
-                    dummyVerificationData.license[licenseNumber]?.name === user.name
-                ) {
-                    licenseVerified = true;
-                }
-            } catch (ocrError) {
-                console.error('Error during OCR process:', ocrError);
-                return res.status(500).json({ message: 'OCR verification failed. Please try again with a clearer image.' });
-            }
-        }
+        // Set licenseVerified using dummy data only; OCR removed
+        const licenseVerified = !!(
+            dummyVerificationData.license[licenseNumber]?.isValid &&
+            dummyVerificationData.license[licenseNumber]?.name === user.name
+        );
         const detailsFields = {
             user: req.user.id, vehicleCategory, vehicleNumber, rcNumber, insuranceNumber, licenseNumber, aadharNumber,
             vehicleType: vehicleCategory === 'Car' ? vehicleType : undefined, vehiclePhotoUrl, rcPhotoUrl, insurancePhotoUrl,
-            licensePhotoUrl, aadharPhotoUrl, livePhotoUrl, isPreviouslyUsedVehicle, rcVerified, insuranceVerified, licenseVerified, aadharVerified,
-            ocrExtractedName, ocrExtractedLicenseNumber, ocrExtractedDob, ocrExtractedValidity
+            licensePhotoUrl, aadharPhotoUrl, livePhotoUrl, isPreviouslyUsedVehicle, rcVerified, insuranceVerified, licenseVerified, aadharVerified
         };
         let providerDetails = await ProviderDetails.findOneAndUpdate({ user: req.user.id }, { $set: detailsFields }, { new: true, upsert: true });
         res.status(201).json({ message: 'Provider details updated successfully', providerDetails });
@@ -552,58 +523,39 @@ app.post('/api/rides/book/:rideId', auth, async (req, res) => {
 const HOST = '0.0.0.0';
 app.listen(PORT, HOST, () => console.log(`Server running on http://${HOST}:${PORT}`));
 
-// --- OCR Preprocessing + Vision Endpoint ---
-// Accepts { imageBase64: 'data:image/...;base64,....', options?: {...} }
-// Performs preprocessing (grayscale, normalize, contrast, threshold, upscale) and returns Vision OCR text
-app.post('/api/ocr/preprocess', async (req, res) => {
-    try {
-        const { imageBase64, options } = req.body || {};
-        if (!imageBase64) {
-            return res.status(400).json({ message: 'imageBase64 is required' });
-        }
-        const base64Data = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
-        const imageBuffer = Buffer.from(base64Data, 'base64');
-        const client = new vision.ImageAnnotatorClient({
-            key: process.env.GOOGLE_CLOUD_VISION_API_KEY,
-        });
-        let image = await Jimp.read(imageBuffer);
-        image = image.normalize();
-        if (image.getWidth() < 1000) {
-            const scale = 1000 / image.getWidth();
-            image = image.resize(1000, Math.round(image.getHeight() * scale), Jimp.RESIZE_BICUBIC);
-        }
-        image = image.grayscale();
-        image = image.contrast(0.3);
-        image = image.quality(100);
-        if (options?.threshold === true) {
-            image = image.threshold({ max: options?.thresholdMax || 200 });
-        }
-        if (options?.blur) {
-            const blurVal = Math.min(Math.max(parseInt(options.blur, 10) || 1, 1), 5);
-            image = image.blur(blurVal);
-        }
-        const preprocessedMime = Jimp.MIME_PNG;
-        const preprocessedBuffer = await image.getBufferAsync(preprocessedMime);
-        const preprocessedBase64 = `data:${preprocessedMime};base64,${preprocessedBuffer.toString('base64')}`;
-        let ocrText = null;
+// --- OCR: Google Cloud Vision Text Extraction ---
+// Requires service account JSON file placed at backend/google-cloud-vision-api.json
+try {
+    const { ImageAnnotatorClient } = require('@google-cloud/vision');
+    const visionClient = new ImageAnnotatorClient({
+        keyFilename: path.join(__dirname, 'google-cloud-vision-api.json')
+    });
+
+    // @route POST /api/ocr/extract
+    // @desc  Extract text from a base64 image using Google Vision
+    // @access Private (but not role-specific)
+    app.post('/api/ocr/extract', auth, async (req, res) => {
         try {
-            const [result] = await client.documentTextDetection({ image: { content: preprocessedBuffer } });
-            if (result?.fullTextAnnotation?.text) {
-                ocrText = result.fullTextAnnotation.text;
-            } else if (result?.textAnnotations?.[0]?.description) {
-                ocrText = result.textAnnotations[0].description;
+            const { imageBase64 } = req.body || {};
+            if (!imageBase64) {
+                return res.status(400).json({ message: 'imageBase64 is required' });
             }
-        } catch (visionErr) {
-            console.error('Vision OCR error:', visionErr?.message || visionErr);
+            const base64Data = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
+            const imageBuffer = Buffer.from(base64Data, 'base64');
+            const [result] = await visionClient.documentTextDetection({ image: { content: imageBuffer } });
+            let text = null;
+            if (result?.fullTextAnnotation?.text) {
+                text = result.fullTextAnnotation.text;
+            } else if (result?.textAnnotations?.[0]?.description) {
+                text = result.textAnnotations[0].description;
+            }
+            return res.json({ text: text || '' });
+        } catch (err) {
+            console.error('OCR extract error:', err?.message || err);
+            return res.status(500).json({ message: 'Failed to extract text' });
         }
-        return res.json({
-            message: 'Preprocessing complete',
-            preprocessedImageBase64: preprocessedBase64,
-            ocrText,
-        });
-    } catch (err) {
-        console.error('OCR preprocess error:', err?.message || err);
-        return res.status(500).json({ message: 'Failed to preprocess image' });
-    }
-});
+    });
+} catch (e) {
+    console.warn('Google Vision not initialized (dependency missing?):', e?.message || e);
+}
 

@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // - For Physical Android Device: 'http://YOUR_LOCAL_IP_ADDRESS:5000/api' (e.g., 'http://192.168.1.100:5000/api')
 // - For iOS Simulator/Device: 'http://localhost:5000/api' (or your local IP)
 // - For Web (if you ever build a web version with Expo): 'http://localhost:5000/api'
-const API_BASE_URL = 'http://10.58.180.205:5000/api'; // Default for Android Emulator
+const API_BASE_URL = 'http://192.168.43.205:5000/api'; // Default for Android Emulator
 
 // Generic function to make API calls
 export const apiCall = async (endpoint, method = 'GET', data = null, token = null) => {
@@ -34,19 +34,14 @@ export const apiCall = async (endpoint, method = 'GET', data = null, token = nul
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-    
-    // Check if response is JSON
     const contentType = response.headers.get('content-type');
     let responseData;
-    
     try {
       if (contentType && contentType.includes('application/json')) {
         responseData = await response.json();
       } else {
-        // Handle non-JSON responses (like HTML error pages)
         const textResponse = await response.text();
         console.error('Non-JSON response received:', textResponse.substring(0, 200));
-        
         if (response.status >= 400) {
           throw new Error(`Server returned ${response.status}: ${response.statusText}. Please check if the backend server is running.`);
         } else {
@@ -63,27 +58,27 @@ export const apiCall = async (endpoint, method = 'GET', data = null, token = nul
     }
 
     if (!response.ok) {
+      // For 404, return a normalized object so caller can handle missing resources gracefully
+      if (response.status === 404) {
+        return { status: 404, message: responseData?.message || 'Resource not found.' };
+      }
       // Handle specific error cases
       if (response.status === 401) {
         throw new Error('Token is invalid or expired. Please login again.');
       } else if (response.status === 403) {
         throw new Error('Access denied. Please check your permissions.');
-      } else if (response.status === 404) {
-        throw new Error('Resource not found.');
       } else if (response.status >= 500) {
         throw new Error('Server error. Please try again later.');
       } else {
-        throw new Error(responseData.message || `Request failed with status ${response.status}`);
+        throw new Error(responseData?.message || `Request failed with status ${response.status}`);
       }
     }
 
     return responseData;
   } catch (error) {
     console.error(`API Call Error (${endpoint}):`, error.message);
-    
-    // If it's a token error, we should clear the token
+
     if (error.message.includes('Token is invalid') || error.message.includes('expired')) {
-      // Clear token from storage - this will trigger logout
       try {
         await AsyncStorage.removeItem('userToken');
         await AsyncStorage.removeItem('userRole');
@@ -91,7 +86,7 @@ export const apiCall = async (endpoint, method = 'GET', data = null, token = nul
         console.error('Failed to clear invalid token:', storageError);
       }
     }
-    
+
     throw error;
   }
 };
@@ -123,4 +118,9 @@ export const rideApi = {
   getProviderRides: (token) => apiCall('/provider/rides', 'GET', null, token),
   bookRide: (rideId, token) => apiCall(`/rides/book/${rideId}`, 'POST', null, token),
   deleteRide: (rideId, token) => apiCall(`/provider/rides/${rideId}`, 'DELETE', null, token),
+};
+
+// OCR API
+export const ocrApi = {
+  extractText: (imageBase64, token) => apiCall('/ocr/extract', 'POST', { imageBase64 }, token),
 };

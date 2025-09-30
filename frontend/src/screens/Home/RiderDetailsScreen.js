@@ -16,8 +16,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { AuthContext } from '../../context/AuthContext';
-import { riderApi } from '../../utils/api';
-import { visionApi } from '../../services/visionApi';
+import { riderApi, ocrApi } from '../../utils/api';
 import { colors, spacing, borderRadius, typography, shadow } from '../../styles/theme';
 import { matchAadhaar } from '../../utils/fuzzyMatch';
 
@@ -128,24 +127,24 @@ const RiderDetailsScreen = ({ navigation }) => {
         console.log('Image data base64 length:', imageData.base64 ? imageData.base64.length : 'No base64');
         setImageFunction(imageData);
         
-        // Perform OCR verification for Aadhaar document
-        if (documentType === 'aadhar' && imageData.base64) {
+        // Perform OCR verification for Aadhaar document using backend OCR
+        if (documentType === 'aadhar' && imageData.base64 && userToken) {
           try {
             console.log('Performing OCR verification for Aadhaar...');
-            
-            // Show OCR progress
             Alert.alert('OCR Processing', 'Analyzing Aadhaar card... Please wait.');
-            
-            const aadharInfo = await visionApi.extractAadharInfo(imageData.base64);
-            if (aadharInfo && aadharInfo.aadhaarNumber) {
-              setAadharNumber(aadharInfo.aadhaarNumber);
-              setExtractedAadhaar(aadharInfo.aadhaarNumber);
-              Alert.alert(
-                'OCR Success - Aadhaar', 
-                `✅ Document Successfully Analyzed!\n\n📋 Extracted Data:\n• Aadhaar Number: ${aadharInfo.aadhaarNumber}\n\n🔍 Auto-fill Status:\n• Aadhaar number has been auto-filled\n\n⚠️ Please verify the extracted Aadhaar number matches your document exactly.`
-              );
+            const { text } = await ocrApi.extractText(`data:image/jpeg;base64,${imageData.base64}`, userToken);
+            if (text && typeof text === 'string') {
+              const aadMatch = text.match(/\b\d{4}\s?\d{4}\s?\d{4}\b/);
+              if (aadMatch) {
+                const normalized = aadMatch[0].replace(/\s/g, '');
+                setAadharNumber(normalized);
+                setExtractedAadhaar(normalized);
+                Alert.alert('OCR Success - Aadhaar', `Detected Aadhaar: ${normalized}`);
+              } else {
+                Alert.alert('OCR Warning', 'Could not extract Aadhaar number. Please ensure the image is clear and contains readable text.');
+              }
             } else {
-              Alert.alert('OCR Warning', 'Could not extract Aadhaar number. Please ensure the image is clear and contains readable text.');
+              Alert.alert('OCR Warning', 'No text detected in the image.');
             }
           } catch (ocrError) {
             console.error('OCR verification failed:', ocrError);
@@ -172,23 +171,24 @@ const RiderDetailsScreen = ({ navigation }) => {
           const imageData = { uri: fallbackResult.assets[0].uri, base64: fallbackResult.assets[0].base64 };
           setImageFunction(imageData);
           
-          // Perform OCR verification for Aadhaar document
-          if (documentType === 'aadhar' && imageData.base64) {
+          // Perform OCR verification for Aadhaar document using backend OCR
+          if (documentType === 'aadhar' && imageData.base64 && userToken) {
             try {
               console.log('Performing OCR verification for Aadhaar (fallback method)...');
-              
-              // Show OCR progress
               Alert.alert('OCR Processing', 'Analyzing Aadhaar card... Please wait.');
-              
-              const aadharInfo = await visionApi.extractAadharInfo(imageData.base64);
-              if (aadharInfo && aadharInfo.aadhaarNumber) {
-                setAadharNumber(aadharInfo.aadhaarNumber);
-                Alert.alert(
-                  'OCR Success - Aadhaar', 
-                  `✅ Document Successfully Analyzed!\n\n📋 Extracted Data:\n• Aadhaar Number: ${aadharInfo.aadhaarNumber}\n\n🔍 Auto-fill Status:\n• Aadhaar number has been auto-filled\n\n⚠️ Please verify the extracted Aadhaar number matches your document exactly.`
-                );
+              const { text } = await ocrApi.extractText(`data:image/jpeg;base64,${imageData.base64}`, userToken);
+              if (text && typeof text === 'string') {
+                const aadMatch = text.match(/\b\d{4}\s?\d{4}\s?\d{4}\b/);
+                if (aadMatch) {
+                  const normalized = aadMatch[0].replace(/\s/g, '');
+                  setAadharNumber(normalized);
+                  setExtractedAadhaar(normalized);
+                  Alert.alert('OCR Success - Aadhaar', `Detected Aadhaar: ${normalized}`);
+                } else {
+                  Alert.alert('OCR Warning', 'Could not extract Aadhaar number. Please ensure the image is clear and contains readable text.');
+                }
               } else {
-                Alert.alert('OCR Warning', 'Could not extract Aadhaar number. Please ensure the image is clear and contains readable text.');
+                Alert.alert('OCR Warning', 'No text detected in the image.');
               }
             } catch (ocrError) {
               console.error('OCR verification failed (fallback method):', ocrError);
