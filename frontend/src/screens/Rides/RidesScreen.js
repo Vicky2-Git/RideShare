@@ -13,8 +13,12 @@ import {
   Alert,
 } from 'react-native';
 import { AuthContext } from '../../context/AuthContext';
+<<<<<<< HEAD
 import { rideApi, providerApi, ocrApi } from '../../utils/api';
 import * as ImagePicker from 'expo-image-picker';
+=======
+import { rideApi, providerApi, getFormattedAddress } from '../../utils/api';
+>>>>>>> 1489dbed3ea3189e9278c767b5c4ca116fba2a09
 import { colors, spacing, borderRadius, typography, shadow } from '../../styles/theme';
 
 const RidesScreen = ({ navigation }) => {
@@ -57,15 +61,30 @@ const RidesScreen = ({ navigation }) => {
   const loadRides = async () => {
     setLoading(true);
     try {
+      let fetchedRides = [];
       if (userRole === 'provider') {
         const response = await rideApi.getProviderRides(userToken);
         const now = Date.now();
-        const activeRides = (response.rides || []).filter(r => new Date(r.startTime).getTime() > now && r.status === 'created');
-        setRides(activeRides);
+        fetchedRides = (response.rides || []).filter(r => new Date(r.startTime).getTime() > now && r.status === 'created');
       } else {
         const response = await rideApi.getAvailableRides(userToken);
-        setRides(response.rides || []);
+        fetchedRides = response.rides || [];
       }
+
+      // Replace coordinates with formatted addresses
+      const updatedRides = await Promise.all(
+        fetchedRides.map(async (ride) => {
+          const startAddress = await getFormattedAddress(ride.startPoint);
+          const destinationAddress = await getFormattedAddress(ride.destination);
+          return {
+            ...ride,
+            startPoint: startAddress || ride.startPoint,
+            destination: destinationAddress || ride.destination,
+          };
+        })
+      );
+
+      setRides(updatedRides);
     } catch (error) {
       console.error('Load rides error:', error);
       // Fallback to mock data if API fails

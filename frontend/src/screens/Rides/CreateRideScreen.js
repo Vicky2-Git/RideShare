@@ -20,6 +20,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { AuthContext } from '../../context/AuthContext';
 import { rideApi } from '../../utils/api';
 import { colors, spacing, borderRadius, typography, shadow } from '../../styles/theme';
+import MapScreen from './MapScreen'; // Import the MapScreen component
 
 const CreateRideScreen = ({ navigation }) => {
   const { userToken, userRole } = useContext(AuthContext);
@@ -40,6 +41,8 @@ const CreateRideScreen = ({ navigation }) => {
   const [pendingStartDate, setPendingStartDate] = useState(null);
   const [pendingEndDate, setPendingEndDate] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showMap, setShowMap] = useState(false); // State to toggle map visibility
+  const [mapMode, setMapMode] = useState('start'); // 'start', 'destination', or 'break'
 
   useEffect(() => {
     // Set default end time to 1 hour after start time
@@ -209,6 +212,27 @@ const CreateRideScreen = ({ navigation }) => {
     }
   };
 
+  const handleMapSelection = (coordinate) => {
+    if (mapMode === 'start') {
+      setStartPoint(`${coordinate.latitude}, ${coordinate.longitude}`);
+    } else if (mapMode === 'destination') {
+      setDestination(`${coordinate.latitude}, ${coordinate.longitude}`);
+    } else if (mapMode === 'break') {
+      setBreakLocations((prev) => prev ? `${prev}, ${coordinate.latitude}, ${coordinate.longitude}` : `${coordinate.latitude}, ${coordinate.longitude}`);
+    }
+    setShowMap(false); // Close the map after selection
+  };
+
+  if (showMap) {
+    return (
+      <MapScreen
+        onSelectLocation={handleMapSelection}
+        mode={mapMode} // Pass the mode to customize the map
+        onCancel={() => setShowMap(false)} // Close map without selection
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -230,37 +254,46 @@ const CreateRideScreen = ({ navigation }) => {
             </View>
           </View>
 
+          {/* Start Point */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Start Point *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter start location"
-              placeholderTextColor={colors.placeholder}
-              value={startPoint}
-              onChangeText={setStartPoint}
-            />
+            <TouchableOpacity
+              style={styles.timeButton}
+              onPress={() => {
+                setMapMode('start');
+                setShowMap(true);
+              }}
+            >
+              <Text style={styles.timeButtonText}>{startPoint || 'Select Start Point'}</Text>
+            </TouchableOpacity>
           </View>
 
+          {/* Destination */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Destination *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter destination"
-              placeholderTextColor={colors.placeholder}
-              value={destination}
-              onChangeText={setDestination}
-            />
+            <TouchableOpacity
+              style={styles.timeButton}
+              onPress={() => {
+                setMapMode('destination');
+                setShowMap(true);
+              }}
+            >
+              <Text style={styles.timeButtonText}>{destination || 'Select Destination'}</Text>
+            </TouchableOpacity>
           </View>
 
+          {/* Break Locations */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Break Locations (Optional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter break locations separated by commas"
-              placeholderTextColor={colors.placeholder}
-              value={breakLocations}
-              onChangeText={setBreakLocations}
-            />
+            <TouchableOpacity
+              style={styles.timeButton}
+              onPress={() => {
+                setMapMode('break');
+                setShowMap(true);
+              }}
+            >
+              <Text style={styles.timeButtonText}>{breakLocations || 'Select Break Locations'}</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.inputGroup}>

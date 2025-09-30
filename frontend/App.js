@@ -5,6 +5,8 @@
 import React, { useContext } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   View,
   ActivityIndicator,
@@ -27,6 +29,7 @@ import CreateRideScreen from './src/screens/Rides/CreateRideScreen';
 
 // Create a stack navigator
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
 
 // Authentication Stack Navigator: For screens accessible when not logged in
 const AuthStack = () => {
@@ -38,17 +41,30 @@ const AuthStack = () => {
   );
 };
 
-// Main App Stack Navigator: For screens accessible when logged in
-const AppStack = () => {
+// Main App Tabs: For screens accessible when logged in
+const AppTabs = () => {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Home" component={HomeScreen} />
-      {/* THESE ARE THE SCREENS THAT NEED TO BE INCLUDED */}
-      <Stack.Screen name="ProviderDetails" component={ProviderDetailsScreen} />
-      <Stack.Screen name="RiderDetails" component={RiderDetailsScreen} />
-      <Stack.Screen name="Rides" component={RidesScreen} />
-      <Stack.Screen name="CreateRide" component={CreateRideScreen} />
-    </Stack.Navigator>
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarActiveTintColor: '#007bff',
+        tabBarInactiveTintColor: '#8e8e93',
+        tabBarStyle: { backgroundColor: '#ffffff' },
+        tabBarIcon: ({ color, size }) => {
+          let iconName = 'home';
+          if (route.name === 'Home') iconName = 'home';
+          if (route.name === 'Rides') iconName = 'car';
+          if (route.name === 'CreateRide') iconName = 'add-circle';
+          if (route.name === 'Profile') iconName = 'person';
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+      })}
+    >
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Rides" component={RidesScreen} />
+      <Tab.Screen name="CreateRide" component={CreateRideScreen} />
+      <Tab.Screen name="Profile" component={ProviderDetailsScreen} />
+    </Tab.Navigator>
   );
 };
 
@@ -69,7 +85,7 @@ const RootNavigator = () => {
   return (
     <NavigationContainer>
       {/* If userToken exists, show the main app stack, otherwise show the authentication stack */}
-      {userToken ? <AppStack /> : <AuthStack />}
+      {userToken ? <AppTabs /> : <AuthStack />}
     </NavigationContainer>
   );
 };
